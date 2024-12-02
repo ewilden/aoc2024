@@ -19,7 +19,6 @@
 
 (comment "day 1 part 1")
 (comment
-  (require '[clojure.string :as str])
   (->> num-lists
        (map sort)
        (apply (fn [a b] (map vector a b)))
