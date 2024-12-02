@@ -27,3 +27,20 @@
 
 (def part1
   (count (filter safe reports)))
+
+(comment part1)
+
+(defn safe2 [report]
+  (let [n (count report)
+        remover (fn [n] (fn [col] (keep-indexed (fn [index item] (when (not= index n) item)) col)))
+        removers (map remover (range n))
+        reports (map (fn [remover report] (remover report)) removers (repeat report))
+        ]
+    (or (safe report) (some safe reports))
+    ))
+
+(safe2 [1 2 10 3])
+
+(def part2 (count (filter safe2 reports)))
+
+(comment part2)
