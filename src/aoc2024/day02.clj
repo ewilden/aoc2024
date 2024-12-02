@@ -11,17 +11,15 @@
        (map #(str/split % #" "))
        (map #(map Integer/parseInt %))))
 
-(defn safe [report] 
+(defn safe [report]
   (let [steps
-  (->> (partition 2 1 report)
-       (map (fn [[a b]] (- a b)))
-       ) 
-  all_increasing (every? pos? steps)
-  all_decreasing (every? neg? steps)
-  absolutes (map abs steps)
-  big_enough (every? #(>= % 1) absolutes)
-  small_enough (every? #(<= % 3) absolutes)
-  ]
+        (->> (partition 2 1 report)
+             (map (fn [[a b]] (- a b))))
+        all_increasing (every? pos? steps)
+        all_decreasing (every? neg? steps)
+        absolutes (map abs steps)
+        big_enough (every? #(>= % 1) absolutes)
+        small_enough (every? #(<= % 3) absolutes)]
     ;; (println [steps all_increasing all_decreasing absolutes big_enough small_enough])
     (and (or all_increasing all_decreasing) big_enough small_enough)))
 
@@ -34,10 +32,8 @@
   (let [n (count report)
         remover (fn [n] (fn [col] (keep-indexed (fn [index item] (when (not= index n) item)) col)))
         removers (map remover (range n))
-        reports (map (fn [remover report] (remover report)) removers (repeat report))
-        ]
-    (or (safe report) (some safe reports))
-    ))
+        reports (map (fn [remover report] (remover report)) removers (repeat report))]
+    (or (safe report) (some safe reports))))
 
 (safe2 [1 2 10 3])
 
