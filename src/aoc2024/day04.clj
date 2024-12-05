@@ -74,8 +74,8 @@
 
 (defn to-concrete-part2 [abstpat]
   (case abstpat
-    :asc [0 1 2]
-    :desc [0 -1 -2]))
+    :asc [-1 0 1]
+    :desc [1 0 -1]))
 
 (comment
   (map (fn [abstpats] (map to-concrete-part2 abstpats))
@@ -114,7 +114,7 @@
 
 (comment (check-candidate-part2 (nth candidates-part2 100)))
 
-(comment (map extract-candidate-part2 candidates-part2))
+(comment (take 100 (map extract-candidate-part2 candidates-part2)))
 
 (def part2 (count (filter check-candidate-part2 candidates-part2)))
 
