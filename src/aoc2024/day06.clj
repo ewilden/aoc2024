@@ -1,7 +1,9 @@
 (ns aoc2024.day06
   "day 6"
   (:require
-   [clojure.string :as str]))
+   [clojure.string :as str])
+  (:require
+   [clojure.core.reducers :as r]))
 
 (def day06-input
   (slurp "input/06.txt"))
@@ -54,7 +56,9 @@
                                             (when (not= c nil) [r c]))))
                 (first)))
 
-(def part1 (count (visited-from #{} {:loc start :facing :up})))
+(def visited-for-part1 (visited-from #{} {:loc start :facing :up}))
+
+(def part1 (count visited-for-part1))
 
 (defn step-part2 [barrier & {loc :loc facing :facing}]
   (let [stepped (unchecked-step loc facing)
@@ -85,9 +89,10 @@
                 (map-indexed (fn [r row] (map-indexed (fn [c _] [r c]) (range (count row)))))
                 (apply concat)
                 (filter (partial not= start))
-                (filter #(causes-loop % #{} {:loc start :facing :up}))
-                (count)
-                ))
+                (filter (partial contains? visited-for-part1))
+                (r/filter #(causes-loop % #{} {:loc start :facing :up}))
+                (r/map (fn [_] 1))
+                (r/fold (r/monoid + (constantly 0)))))
 
 (print part2)
 
