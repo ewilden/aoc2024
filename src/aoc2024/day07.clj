@@ -4,6 +4,7 @@
    [clojure.string :as str]))
 
 (require '[clojure.core.match :refer [match]])
+(require '[clojure.math :as math])
 
 (def day07-input
   (slurp "input/07.txt"))
@@ -42,7 +43,7 @@
   (let [targetstr (str target)
         n (peek nums)
         nstr (str n)]
-    (when (str/ends-with? targetstr nstr) [(long  (quot target (clojure.math/pow 10 (count nstr))))
+    (when (str/ends-with? targetstr nstr) [(long  (quot target (math/pow 10 (count nstr))))
                                            (pop nums)])))
 
 (defn try-equation-part2 [target nums]
@@ -63,3 +64,5 @@
                 (filter #(apply try-equation-part2 %))
                 (map first)
                 (reduce +)))
+
+(print part2)
