@@ -61,7 +61,7 @@
   (->> (:space files-grouped-part2)))
 
 (defn fits [file space] (>= (:size space) (:size file)))
-(defn filter-fitting [file spaces] (filter (partial fits file) (filter #(<= (:block-index %) (:block-index file)) spaces )))
+(defn filter-fitting [file spaces] (filter (partial fits file) (filter #(<= (:block-index %) (:block-index file)) spaces)))
 (defn first-fit [file spaces] (first (sort-by :block-index (filter-fitting file spaces))))
 (defn shrink-space [amount space]
   (when (> (:size space) amount)
@@ -90,13 +90,13 @@
  (sort-by :block-index))
 
 (def part2 (->> (first reduce-to-fill-part2)
-                    (map
-                     (fn [file]
-                       (->>
-                        (map (partial + (:block-index file)) (range (:size file)))
-                        (map (partial * (:fileno file)))
-                        (reduce +))))
+                (map
+                 (fn [file]
+                   (->>
+                    (map (partial + (:block-index file)) (range (:size file)))
+                    (map (partial * (:fileno file)))
+                    (reduce +))))
 
-                    (reduce +)))
+                (reduce +)))
 
 (printf "part2: %d%n" part2)
