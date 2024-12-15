@@ -62,8 +62,7 @@
 
 (defn step-part2 [locs]
   (->>
-   (mapcat edges-from locs)
-   ))
+   (mapcat edges-from locs)))
 
 (defn score-part2 [loc]
   (when (= 0 (grid loc))
