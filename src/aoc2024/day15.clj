@@ -125,3 +125,88 @@ v^^>>><<^^<>>^v^<v^vv<>v^<<>^<^v^v><^<<<><<^<v><v<>vv>>v><v^<vv<>v^<<^")
                 (reduce +)))
 
 (printf "part1: %d%n" part1)
+
+(def widened-map
+  (->> (str/split input #"\n\n")
+       (first)
+       (str/trim)
+       (str/split-lines)
+       (map (fn [row] (mapcat (fn [chr] (match chr
+                                          \# "##"
+                                          \O "[]"
+                                          \. ".."
+                                          \@ "@.")) row)))
+       (map-indexed (fn [r row] (map-indexed (fn [c chr] [[r c] chr]) (seq row))))
+       (apply concat)
+       (#(into {} %))))
+
+(def initial-robot-part2 (find-robot widened-map))
+
+(def initial-state-part2
+  {:map widened-map :robot initial-robot-part2})
+
+(defn all-halves [state halfloc [roff coff]]
+  (if (= 0 roff)
+    [halfloc]
+    (let [other-half (match (get-in state [:map halfloc])
+                       \[ (map + halfloc [0 1])
+                       \] (map + halfloc [0 -1]))]
+      [halfloc other-half])))
+
+(defn push-into-part2 [state loc offset]
+  (let [nextloc (map + loc offset)
+        me (get-in state [:map loc])]
+    (match (get-in state [:map nextloc] \#)
+      \. {:next-state (-> state
+                          (update-in [:map nextloc] (constantly me))
+                          (update-in [:map loc] (constantly \.)))
+          :ok true}
+      \# {:next-state state
+          :ok false}
+      _ (let [{next-state :next-state
+               ok :ok}
+              (reduce (fn [{next-state :next-state ok :ok}
+                           loc]
+                        (if ok
+                          (push-into-part2 next-state loc offset)
+                          {:next-state next-state :ok false}))
+                      {:next-state state :ok true}
+                      (all-halves state nextloc offset))]
+          (if ok
+            (recur next-state loc offset)
+            {:next-state state :ok false})))))
+
+(defn step-part2 [state move]
+  (let [robot (:robot state)
+        offset (offset-from-move move)
+        {next-state :next-state
+         ok :ok} (push-into-part2 state robot offset)]
+    (if ok
+      (assoc next-state :robot (map + robot offset))
+      next-state)))
+
+(def final-state-part2 (reduce step-part2 initial-state-part2 moves))
+
+(def max-row-part2 (->> (keys widened-map)
+                        (map first)
+                        (apply max)))
+
+(def max-col-part2 (->> (keys widened-map)
+                        (map second)
+                        (apply max)))
+
+(defn print-state-part2 [state]
+  (doseq [r (range (+ 1 max-row-part2))]
+    (doseq [c (range (+ 1 max-col-part2))]
+      (print (get-in state [:map [r c]])))  (print "\n")))
+
+(print-state-part2 initial-state-part2)
+
+(print-state-part2 final-state-part2)
+
+(def part2 (->> (keys (:map final-state-part2))
+                (filter #(= \[ (get-in final-state-part2 [:map %])))
+                (map (fn [[r c]] (+ (* 100 r) c)))
+                (reduce +)))
+
+(printf "part2: %d%n" part2)
