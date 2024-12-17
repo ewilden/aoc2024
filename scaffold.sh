@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 ,aocdl "$1"
-cat > "src/aoc2024/day""$1"".clj" << EOF
+cat >>"src/aoc2024/day""$1"".clj" <<EOF
 (ns aoc2024.day$1
   "day $1"
   (:require
