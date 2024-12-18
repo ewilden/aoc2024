@@ -84,34 +84,68 @@
 (def all-states (mapcat
                  (fn [loc] (for [facing all-offsets]
                              {:pos loc :facing facing}))
-                 (keys grid)))
+                 (filter allowed-to-enter (keys grid))))
 (def initial-costs (assoc (zipmap
                            all-states (repeat inf)) initial-state 0))
 
 (def initial-dijkstra
   {:costs initial-costs
+   :prevs {}
    :unvisited (into #{} all-states)})
 
 (defn dijkstra [curr]
   (let [{costs :costs
-         unvisited :unvisited} curr]
+         unvisited :unvisited
+         prevs :prevs} curr]
     (if (empty? unvisited)
       curr
       (let [node (apply min-key costs unvisited)
             unvisited (clojure.set/difference unvisited #{node})
             neighbors (->> (edges-from node)
                            (filter #(unvisited (% :next-state))))
-            costs (reduce
-                   (fn [costs {state :next-state cost :cost}]
-                     (update costs state
-                             (fn [old-cost]
-                               (min old-cost (+ (costs node) cost)))))
-                   costs
+            {costs :costs prevs :prevs} (reduce
+                   (fn [{costs :costs prevs :prevs} {state :next-state cost :cost}]
+                     (let [old-cost (costs state)
+                           new-cost (+ (costs node) cost)]
+                       (if (< new-cost old-cost)
+                         {:costs (assoc costs state new-cost)
+                          :prevs (assoc prevs state #{node})}
+                         (if (= new-cost old-cost)
+                           {:costs costs
+                            :prevs (update prevs state #(conj % node))}
+                           {:costs costs :prevs prevs}))))
+                   {:costs costs :prevs prevs}
                    neighbors)]
         (recur {:costs costs
+                :prevs prevs
                 :unvisited unvisited})))))
 (def dijkstra-results (dijkstra initial-dijkstra))
 (def end-costs (select-keys (:costs dijkstra-results) (for-all-offsets end)))
 (def part1 (apply min (vals end-costs)))
 
 (printf "part1: %d%n" part1)
+
+(defn fix [f seed]
+  (let [seed' (f seed)]
+    (if (not= seed' seed)
+      (recur f seed')
+      seed')))
+
+(defn seek-backwards [results currents]
+  (let [nexts (into #{} (mapcat (dijkstra-results :prevs) currents))
+        results (clojure.set/union results nexts)
+        ]
+    (if (empty? nexts)
+      results 
+      (recur results nexts))))
+
+(def nodes-on-paths-to-end (seek-backwards #{} (into #{} (for-all-offsets end))))
+
+(def part2 (->> nodes-on-paths-to-end
+                (map (fn [node] (node :pos)))
+                (into #{})
+                (#(conj % start end))
+                (into #{})
+                (count)))
+
+(printf "part2: %d%n" part2)
