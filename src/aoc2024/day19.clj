@@ -75,22 +75,22 @@ bbrgwb")
         sum (+ sum num-empty)
         designs (mapcat munch-prefix-of-design designs)]
     (if (empty? designs)
-      sum 
+      sum
       (recur sum designs))))
 
 (def foo
   (memoize
-    (fn [design]
-      (if (= "" design)
-        1 
-        (let [designs (munch-prefix-of-design design)]
-          (if (empty? designs)
-            0
-            (let [total (count designs)
-                  designs (remove ( partial = "") designs) 
-                  num-empty (- total (count designs)) ] (apply + num-empty (map foo designs)))))))))
+   (fn [design]
+     (if (= "" design)
+       1
+       (let [designs (munch-prefix-of-design design)]
+         (if (empty? designs)
+           0
+           (let [total (count designs)
+                 designs (remove (partial = "") designs)
+                 num-empty (- total (count designs))] (apply + num-empty (map foo designs)))))))))
 
-(def part2 (->> designs 
+(def part2 (->> designs
                 (map foo)
                 (reduce +)))
 
