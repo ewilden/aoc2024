@@ -104,18 +104,18 @@
             neighbors (->> (edges-from node)
                            (filter #(unvisited (% :next-state))))
             {costs :costs prevs :prevs} (reduce
-                   (fn [{costs :costs prevs :prevs} {state :next-state cost :cost}]
-                     (let [old-cost (costs state)
-                           new-cost (+ (costs node) cost)]
-                       (if (< new-cost old-cost)
-                         {:costs (assoc costs state new-cost)
-                          :prevs (assoc prevs state #{node})}
-                         (if (= new-cost old-cost)
-                           {:costs costs
-                            :prevs (update prevs state #(conj % node))}
-                           {:costs costs :prevs prevs}))))
-                   {:costs costs :prevs prevs}
-                   neighbors)]
+                                         (fn [{costs :costs prevs :prevs} {state :next-state cost :cost}]
+                                           (let [old-cost (costs state)
+                                                 new-cost (+ (costs node) cost)]
+                                             (if (< new-cost old-cost)
+                                               {:costs (assoc costs state new-cost)
+                                                :prevs (assoc prevs state #{node})}
+                                               (if (= new-cost old-cost)
+                                                 {:costs costs
+                                                  :prevs (update prevs state #(conj % node))}
+                                                 {:costs costs :prevs prevs}))))
+                                         {:costs costs :prevs prevs}
+                                         neighbors)]
         (recur {:costs costs
                 :prevs prevs
                 :unvisited unvisited})))))
@@ -133,10 +133,9 @@
 
 (defn seek-backwards [results currents]
   (let [nexts (into #{} (mapcat (dijkstra-results :prevs) currents))
-        results (clojure.set/union results nexts)
-        ]
+        results (clojure.set/union results nexts)]
     (if (empty? nexts)
-      results 
+      results
       (recur results nexts))))
 
 (def nodes-on-paths-to-end (seek-backwards #{} (into #{} (for-all-offsets end))))
