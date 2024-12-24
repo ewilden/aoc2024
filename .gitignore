@@ -5,3 +5,7 @@
 .nrepl-port
 
 input
+
+# Added by cargo
+
+/target
