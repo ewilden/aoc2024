@@ -28,7 +28,10 @@
 
 (def use-sample
   ;; true
-  false)
+  false
+  ;; spacer
+  )
+
 
 (def input (if use-sample sample day20-input))
 
@@ -204,12 +207,23 @@
             (filter #(not (disallowed-cheats #{(:loc state) %})))
             (map (fn [loc] {:next-state {:cheated true :loc loc} :cost (manhattan loc (:loc state))})))))))
 
+(defn find-cheats-part2-aux [prevs currs acc]
+  (let [currs (into #{} (filter :cheated currs))
+        ;; _ (println "currs" currs)
+        edges (into #{} (mapcat (fn [curr] (map (fn [prev] #{prev curr}) (prevs curr))) currs))
+        edges (into #{} (filter (fn [edge] (let [[a b] (into [] edge)] (not= (:cheated a) (:cheated b))))) edges)
+        edges (into #{} (map (fn [edge] (into #{} (map :loc edge))) edges))
+        ;; _ (println edges)
+        acc (clojure.set/union acc edges)
+        nexts (into #{} (mapcat prevs currs))
+        ]
+    (if (empty? currs)
+      acc 
+      (recur prevs nexts acc)
+      )))
+
 (defn find-cheats-part2 [prevs curr]
-  (apply clojure.set/union
-         (for [next-node (prevs curr)]
-           (if (not= (:cheated curr) (:cheated next-node))
-             #{#{(:loc curr) (:loc next-node)}}
-             (find-cheats-part2 prevs next-node)))))
+  (find-cheats-part2-aux prevs #{curr} #{}))
 
 (def cost-with-cheating-part2
   (get-in (dijkstra (edges-from-when-part2 #{}) initial-dijkstra)
@@ -229,7 +243,7 @@
       prev-already-used
       (do
         (println cost)
-        (cheats-under-threshold-part2 threshold already-used)))))
+        (recur threshold already-used)))))
 
 (def threshold-diff-part2
   (if use-sample 74 100))
@@ -237,7 +251,7 @@
 (def part2
   (->> (cheats-under-threshold-part2
         (- cost-without-cheating threshold-diff-part2) #{})
-       ;; (map #(do (println %) %))
+       (map #(do (println %) %))
        (count)))
 
 (println "part2:" part2)
