@@ -1,7 +1,8 @@
 use auto_enums::auto_enum;
 use derivative::Derivative;
 use itertools::Itertools;
-use std::collections::{HashMap, HashSet, VecDeque};
+use priority_queue::PriorityQueue;
+use std::collections::{HashMap, HashSet};
 
 use aoc_runner_derive::{aoc, aoc_generator};
 
@@ -34,7 +35,7 @@ const SAMPLE: &str = "###############
 #...#...#...###
 ###############";
 
-const USE_SAMPLE: bool = true;
+const USE_SAMPLE: bool = false;
 
 #[aoc_generator(day20)]
 fn parse_input(input: &str) -> Input {
@@ -101,36 +102,38 @@ impl Input {
     }
 
     #[auto_enum(Iterator)]
-    fn node_edges<const CHEAT_RADIUS: i64>(
-        &self,
-        queue_entry: QueueEntry,
-    ) -> impl Iterator<Item = QueueEntry> + '_ {
-        let QueueEntry { node, steps } = queue_entry;
+    fn node_edges<'a, const CHEAT_RADIUS: i64>(
+        &'a self,
+        node: Node,
+        banned_cheats: &'a HashSet<Cheat>,
+    ) -> impl Iterator<Item = (Node, i64)> + 'a {
         match node.cheated {
-            Some(cheat) => self.neighbors(node.pos).map(move |pos| QueueEntry {
-                steps: steps + 1,
-                node: Node {
-                    pos,
-                    cheated: Some(cheat),
-                },
-            }),
-            None => self
+            true => self
+                .neighbors(node.pos)
+                .map(move |pos| (Node { pos, cheated: true }, 1)),
+            false => self
                 .neighbors_within_cheat_radius::<CHEAT_RADIUS>(node.pos)
-                .map(move |pos| QueueEntry {
-                    steps: manhattan_dist(node.pos, pos),
-                    node: Node {
-                        pos,
-                        cheated: Some(Cheat {
-                            start_pos: node.pos,
-                            end_pos: pos,
-                        }),
-                    },
+                .filter(move |pos| {
+                    !banned_cheats.contains(&Cheat {
+                        start_pos: node.pos,
+                        end_pos: *pos,
+                    })
                 })
-                .chain(self.neighbors(node.pos).map(move |pos| QueueEntry {
-                    steps: steps + 1,
-                    node: Node { pos, cheated: None },
+                .map(move |pos| (Node { pos, cheated: true }, manhattan_dist(node.pos, pos)))
+                .chain(self.neighbors(node.pos).map(move |pos| {
+                    (
+                        Node {
+                            pos,
+                            cheated: false,
+                        },
+                        1,
+                    )
                 })),
         }
+    }
+
+    fn heuristic(&self, node: Node) -> i64 {
+        manhattan_dist(node.pos, self.end)
     }
 }
 
@@ -143,22 +146,7 @@ struct Cheat {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 struct Node {
     pos: (i64, i64),
-    cheated: Option<Cheat>,
-}
-
-impl Node {
-    fn at_step(self, step: i64) -> QueueEntry {
-        QueueEntry {
-            node: self,
-            steps: step,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-struct QueueEntry {
-    node: Node,
-    steps: i64,
+    cheated: bool,
 }
 
 #[derive(Derivative)]
@@ -166,67 +154,60 @@ struct QueueEntry {
 struct State<'a, const CHEAT_RADIUS: i64> {
     #[derivative(Debug = "ignore")]
     input: &'a Input,
-    queue: VecDeque<QueueEntry>,
-    winning_cheats: HashSet<Cheat>,
-    ending_condition: EndingCondition,
-    visited: HashSet<Node>,
+    open_set: PriorityQueue<Node, i64>,
+    came_from: HashMap<Node, Node>,
+    g_score: HashMap<Node, i64>,
+    banned_cheats: &'a HashSet<Cheat>,
 }
 
 #[derive(Debug)]
 enum Done {
     QueueEmpty,
     ReachedEnd(i64),
-    StepLimitReached,
 }
 
 impl<'a, const CHEAT_RADIUS: i64> State<'a, CHEAT_RADIUS> {
-    fn new(input: &'a Input, ending_condition: EndingCondition) -> State<'a, CHEAT_RADIUS> {
-        let mut queue = VecDeque::new();
-        queue.push_back(
-            Node {
-                pos: input.start,
-                cheated: None,
-            }
-            .at_step(0),
-        );
+    fn new(input: &'a Input, banned_cheats: &'a HashSet<Cheat>) -> State<'a, CHEAT_RADIUS> {
+        let mut open_set = PriorityQueue::new();
+        let start_node = Node {
+            pos: input.start,
+            cheated: false,
+        };
+        open_set.push(start_node, -input.heuristic(start_node));
         State {
             input,
-            queue,
-            winning_cheats: HashSet::new(),
-            ending_condition,
-            visited: HashSet::new(),
+            open_set,
+            came_from: HashMap::new(),
+            g_score: HashMap::from_iter([(start_node, 0)]),
+            banned_cheats,
         }
     }
 
     fn step(&mut self) -> Option<Done> {
-        let Some(entry) = self.queue.pop_front() else {
+        let Some((current, _)) = self.open_set.pop() else {
             return Some(Done::QueueEmpty);
         };
-        if !self.visited.insert(entry.node) {
-            return None;
+        let cost = *self.g_score.get(&current).unwrap();
+        if current.pos == self.input.end {
+            return Some(Done::ReachedEnd(cost));
         }
-        if let EndingCondition::StepLimit(step_limit) = self.ending_condition {
-            if entry.steps > step_limit {
-                return Some(Done::StepLimitReached);
+        for (neighbor, edge_weight) in self
+            .input
+            .node_edges::<CHEAT_RADIUS>(current, self.banned_cheats)
+        {
+            let tentative_g_score = cost + edge_weight;
+            if self
+                .g_score
+                .get(&neighbor)
+                .map(|&s| s > tentative_g_score)
+                .unwrap_or(true)
+            {
+                self.came_from.insert(neighbor, current);
+                self.g_score.insert(neighbor, tentative_g_score);
+                let f_score = tentative_g_score + self.input.heuristic(neighbor);
+                self.open_set.push(neighbor, -f_score);
             }
         }
-        if entry.node.pos == self.input.end {
-            if let Some(cheat) = entry.node.cheated {
-                self.winning_cheats.insert(cheat);
-                eprintln!("Found winning cheat: {cheat:?}");
-            }
-            if matches!(self.ending_condition, EndingCondition::FoundEnd) {
-                return Some(Done::ReachedEnd(entry.steps));
-            }
-        }
-        if let Some(cheat) = entry.node.cheated {
-            if self.winning_cheats.contains(&cheat) {
-                // No need to explore this node further since we already know its cheat is successful.
-                return None;
-            }
-        }
-        self.queue
-            .extend(self.input.node_edges::<CHEAT_RADIUS>(entry));
         None
     }
 
@@ -238,12 +219,24 @@ impl<'a, const CHEAT_RADIUS: i64> State<'a, CHEAT_RADIUS> {
             }
         }
     }
-}
 
-#[derive(Debug)]
-enum EndingCondition {
-    FoundEnd,
-    StepLimit(i64),
+    fn find_cheat(&self) -> Cheat {
+        let mut current = Node {
+            pos: self.input.end,
+            cheated: true,
+        };
+        loop {
+            let next = self.came_from[&current];
+            if !next.cheated {
+                return Cheat {
+                    start_pos: next.pos,
+                    end_pos: current.pos,
+                };
+            } else {
+                current = next;
+            }
+        }
+    }
 }
 
 const CHEAT_ADVANTAGE_PART_1: i64 = if USE_SAMPLE { 40 } else { 100 };
@@ -251,7 +244,8 @@ const CHEAT_ADVANTAGE_PART_1: i64 = if USE_SAMPLE { 40 } else { 100 };
 #[aoc(day20, part1)]
 fn part1(input: &Input) -> i64 {
     let original_cost = {
-        let mut state = State::<0>::new(input, EndingCondition::FoundEnd);
+        let banned_cheats = HashSet::new();
+        let mut state = State::<0>::new(input, &banned_cheats);
         match state.run_to_completion() {
             Done::ReachedEnd(cost) => cost,
             done => panic!("unexpected done {done:?} state {state:?}"),
@@ -259,10 +253,21 @@ fn part1(input: &Input) -> i64 {
     };
     eprintln!("cost without cheating: {original_cost}");
     let threshold = original_cost - CHEAT_ADVANTAGE_PART_1;
-    let mut state = State::<2>::new(input, EndingCondition::StepLimit(threshold));
-    match state.run_to_completion() {
-        Done::StepLimitReached => state.winning_cheats.len() as i64,
-        _ => panic!("expected to reach step limit"),
+
+    let mut banned_cheats = HashSet::new();
+    loop {
+        let mut state = State::<2>::new(input, &banned_cheats);
+        let cost = match state.run_to_completion() {
+            Done::ReachedEnd(cost) => cost,
+            _ => panic!("expected to reach step limit"),
+        };
+        if cost > threshold {
+            return banned_cheats.len() as i64;
+        } else {
+            let cheat = state.find_cheat();
+            // eprintln!("banning cheat {cheat:?}");
+            banned_cheats.insert(cheat);
+        }
     }
 }
 
@@ -271,7 +276,8 @@ const CHEAT_ADVANTAGE_PART_2: i64 = if USE_SAMPLE { 74 } else { 100 };
 #[aoc(day20, part2)]
 fn part2(input: &Input) -> i64 {
     let original_cost = {
-        let mut state = State::<0>::new(input, EndingCondition::FoundEnd);
+        let banned_cheats = HashSet::new();
+        let mut state = State::<0>::new(input, &banned_cheats);
         match state.run_to_completion() {
             Done::ReachedEnd(cost) => cost,
             done => panic!("unexpected done {done:?} state {state:?}"),
@@ -279,9 +285,20 @@ fn part2(input: &Input) -> i64 {
     };
     eprintln!("cost without cheating: {original_cost}");
     let threshold = original_cost - CHEAT_ADVANTAGE_PART_2;
-    let mut state = State::<20>::new(input, EndingCondition::StepLimit(threshold));
-    match state.run_to_completion() {
-        Done::StepLimitReached => state.winning_cheats.len() as i64,
-        _ => panic!("expected to reach step limit"),
+
+    let mut banned_cheats = HashSet::new();
+    loop {
+        let mut state = State::<20>::new(input, &banned_cheats);
+        let cost = match state.run_to_completion() {
+            Done::ReachedEnd(cost) => cost,
+            _ => panic!("expected to reach step limit"),
+        };
+        if cost > threshold {
+            return banned_cheats.len() as i64;
+        } else {
+            let cheat = state.find_cheat();
+            // eprintln!("banning cheat {cheat:?}");
+            banned_cheats.insert(cheat);
+        }
     }
 }
