@@ -155,7 +155,7 @@ struct State<'a, const CHEAT_RADIUS: i64> {
     #[derivative(Debug = "ignore")]
     input: &'a Input,
     open_set: PriorityQueue<Node, i64>,
-    came_from: HashMap<Node, Node>,
+    came_from: HashMap<Node, HashSet<Node>>,
     g_score: HashMap<Node, i64>,
     banned_cheats: &'a HashSet<Cheat>,
 }
@@ -199,10 +199,19 @@ impl<'a, const CHEAT_RADIUS: i64> State<'a, CHEAT_RADIUS> {
             if self
                 .g_score
                 .get(&neighbor)
+                .map(|&s| s == tentative_g_score)
+                .unwrap_or(false)
+            {
+                self.came_from.get_mut(&neighbor).unwrap().insert(current);
+            }
+            if self
+                .g_score
+                .get(&neighbor)
                 .map(|&s| s > tentative_g_score)
                 .unwrap_or(true)
             {
-                self.came_from.insert(neighbor, current);
+                self.came_from
+                    .insert(neighbor, HashSet::from_iter([current]));
                 self.g_score.insert(neighbor, tentative_g_score);
                 let f_score = tentative_g_score + self.input.heuristic(neighbor);
                 self.open_set.push(neighbor, -f_score);
@@ -220,20 +229,27 @@ impl<'a, const CHEAT_RADIUS: i64> State<'a, CHEAT_RADIUS> {
         }
     }
 
-    fn find_cheat(&self) -> Cheat {
-        let mut current = Node {
+    fn find_cheats(&self) -> HashSet<Cheat> {
+        let mut cheats = HashSet::new();
+        let mut currents: HashSet<Node> = HashSet::from_iter([Node {
             pos: self.input.end,
             cheated: true,
-        };
+        }]);
         loop {
-            let next = self.came_from[&current];
-            if !next.cheated {
-                return Cheat {
-                    start_pos: next.pos,
-                    end_pos: current.pos,
-                };
-            } else {
-                current = next;
+            if currents.is_empty() {
+                return cheats;
+            }
+            for current in std::mem::take(&mut currents) {
+                for next in self.came_from[&current].iter() {
+                    if !next.cheated {
+                        cheats.insert(Cheat {
+                            start_pos: next.pos,
+                            end_pos: current.pos,
+                        });
+                    } else {
+                        currents.insert(*next);
+                    }
+                }
             }
         }
     }
@@ -264,9 +280,9 @@ fn part1(input: &Input) -> i64 {
         if cost > threshold {
             return banned_cheats.len() as i64;
         } else {
-            let cheat = state.find_cheat();
+            let cheats = state.find_cheats();
             // eprintln!("banning cheat {cheat:?}");
-            banned_cheats.insert(cheat);
+            banned_cheats.extend(cheats);
         }
     }
 }
@@ -296,9 +312,9 @@ fn part2(input: &Input) -> i64 {
         if cost > threshold {
             return banned_cheats.len() as i64;
         } else {
-            let cheat = state.find_cheat();
+            let cheats = state.find_cheats();
             // eprintln!("banning cheat {cheat:?}");
-            banned_cheats.insert(cheat);
+            banned_cheats.extend(cheats);
         }
     }
 }
