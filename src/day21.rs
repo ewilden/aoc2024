@@ -1,11 +1,7 @@
-use auto_enums::auto_enum;
 use derivative::Derivative;
 use itertools::Itertools;
 use priority_queue::PriorityQueue;
-use std::{
-    collections::{HashMap, HashSet},
-    fmt::Write,
-};
+use std::{collections::HashMap, fmt::Write};
 
 use aoc_runner_derive::{aoc, aoc_generator};
 
@@ -14,12 +10,6 @@ const SAMPLE: &str = "029A
 179A
 456A
 379A";
-
-#[derive(Debug)]
-enum KeypadKind {
-    Numeric,
-    Directional,
-}
 
 fn format_as_char(c: &u8, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
     f.write_char(*c as char)
@@ -33,14 +23,12 @@ fn format_as_char_vec(v: &[u8], f: &mut std::fmt::Formatter) -> Result<(), std::
 }
 
 struct Keypad {
-    kind: KeypadKind,
     keypad: HashMap<(i32, i32), u8>,
 }
 
 impl Keypad {
     fn numeric() -> Keypad {
         Keypad {
-            kind: KeypadKind::Numeric,
             keypad: [
                 [b'7', b'8', b'9'],
                 [b'4', b'5', b'6'],
@@ -61,7 +49,6 @@ impl Keypad {
 
     fn directional() -> Keypad {
         Keypad {
-            kind: KeypadKind::Directional,
             keypad: [[b'X', b'^', b'A'], [b'<', b'v', b'>']]
                 .into_iter()
                 .enumerate()
@@ -133,27 +120,25 @@ impl Keypad {
 
 #[derive(Derivative, Clone, Hash, Eq, PartialEq, PartialOrd, Ord)]
 #[derivative(Debug)]
-struct SearchNode {
+struct SearchNode<const NUM_DIRECTIONALS: usize> {
     #[derivative(Debug(format_with = "format_as_char_vec"))]
     code_so_far: Vec<u8>,
     #[derivative(Debug(format_with = "format_as_char"))]
     numeric: u8,
-    #[derivative(Debug(format_with = "format_as_char"))]
-    first_directional: u8,
-    #[derivative(Debug(format_with = "format_as_char"))]
-    second_directional: u8,
+    #[derivative(Debug(format_with = "format_as_char_vec"))]
+    directionals: [u8; NUM_DIRECTIONALS],
 }
 
 #[derive(Derivative)]
 #[derivative(Debug)]
-struct SearchState {
+struct SearchState<const NUM_DIRECTIONALS: usize> {
     #[derivative(Debug = "ignore")]
     numeric_keypad: Keypad,
     #[derivative(Debug = "ignore")]
     directional_keypad: Keypad,
-    open_set: PriorityQueue<SearchNode, i64>,
-    came_from: HashMap<SearchNode, SearchNode>,
-    g_score: HashMap<SearchNode, i64>,
+    open_set: PriorityQueue<SearchNode<NUM_DIRECTIONALS>, i64>,
+    came_from: HashMap<SearchNode<NUM_DIRECTIONALS>, SearchNode<NUM_DIRECTIONALS>>,
+    g_score: HashMap<SearchNode<NUM_DIRECTIONALS>, i64>,
     #[derivative(Debug(format_with = "format_as_char_vec"))]
     target_code: [u8; 4],
 }
@@ -164,8 +149,24 @@ enum Done {
     ReachedEnd(i64),
 }
 
-impl SearchState {
-    fn heuristic(&self, _node: SearchNode) -> i64 {
+#[derive(Debug)]
+enum Level {
+    Numeric,
+    Directional(usize),
+}
+
+impl Level {
+    fn next(&self) -> Self {
+        match self {
+            Level::Directional(0) => Level::Numeric,
+            Level::Directional(i) => Level::Directional(i - 1),
+            Level::Numeric => panic!("no more levels"),
+        }
+    }
+}
+
+impl<const NUM_DIRECTIONALS: usize> SearchState<NUM_DIRECTIONALS> {
+    fn heuristic(&self, _node: SearchNode<NUM_DIRECTIONALS>) -> i64 {
         // Let's implement a heuristic later if it seems necessary.
         return 0;
     }
@@ -174,8 +175,7 @@ impl SearchState {
         let start_node = SearchNode {
             code_so_far: Vec::new(),
             numeric: b'A',
-            first_directional: b'A',
-            second_directional: b'A',
+            directionals: [b'A'; NUM_DIRECTIONALS],
         };
         let mut open_set = PriorityQueue::new();
         open_set.push(start_node.clone(), 0);
@@ -189,8 +189,8 @@ impl SearchState {
         }
     }
 
-    fn apply_me_input(&self, node: &mut SearchNode, input: u8) {
-        eprintln!("apply_me_input {node:?} {}", input as char);
+    fn apply_input(&self, level: Level, node: &mut SearchNode<NUM_DIRECTIONALS>, input: u8) {
+        eprintln!("apply_input {level:?} {node:?} {}", input as char);
         let offset = match input {
             b'A' => None,
             b'<' => Some((0, -1)),
@@ -199,71 +199,42 @@ impl SearchState {
             b'v' => Some((1, 0)),
             _ => unreachable!(),
         };
-        let (r, c) = self.directional_keypad.location_of(node.second_directional);
         match offset {
-            None => self.apply_second_input(node, node.second_directional),
+            None => match level {
+                Level::Numeric => {
+                    node.code_so_far.push(node.numeric);
+                }
+                Level::Directional(i) => self.apply_input(level.next(), node, node.directionals[i]),
+            },
             Some((dr, dc)) => {
+                let (keypad, curr) = match level {
+                    Level::Numeric => (&self.numeric_keypad, node.numeric),
+                    Level::Directional(i) => (&self.directional_keypad, node.directionals[i]),
+                };
+                let (r, c) = keypad.location_of(curr);
                 let loc = (r + dr, c + dc);
-                node.second_directional = self.directional_keypad.keypad[&loc];
+                match level {
+                    Level::Numeric => node.numeric = keypad.keypad[&loc],
+                    Level::Directional(i) => node.directionals[i] = keypad.keypad[&loc],
+                }
             }
         }
     }
 
-    fn apply_second_input(&self, node: &mut SearchNode, input: u8) {
-        eprintln!("apply_second_input {node:?} {}", input as char);
-        let offset = match input {
-            b'A' => None,
-            b'<' => Some((0, -1)),
-            b'>' => Some((0, 1)),
-            b'^' => Some((-1, 0)),
-            b'v' => Some((1, 0)),
-            _ => unreachable!(),
-        };
-        let (r, c) = self.directional_keypad.location_of(node.first_directional);
-        match offset {
-            None => self.apply_first_input(node, node.first_directional),
-            Some((dr, dc)) => {
-                let loc = (r + dr, c + dc);
-                node.first_directional = self.directional_keypad.keypad[&loc];
-            }
-        }
-    }
-
-    fn apply_first_input(&self, node: &mut SearchNode, input: u8) {
-        eprintln!("apply_first_input {node:?} {}", input as char);
-        let offset = match input {
-            b'A' => None,
-            b'<' => Some((0, -1)),
-            b'>' => Some((0, 1)),
-            b'^' => Some((-1, 0)),
-            b'v' => Some((1, 0)),
-            _ => unreachable!(),
-        };
-        let (r, c) = self.numeric_keypad.location_of(node.numeric);
-        match offset {
-            None => {
-                // Great! We can hit 'A' and prompt the robot facing the numeric keypad to actually input a digit.
-                node.code_so_far.push(node.numeric);
-            }
-            Some((dr, dc)) => {
-                let loc = (r + dr, c + dc);
-                node.numeric = self.numeric_keypad.keypad[&loc];
-            }
-        }
-    }
-
-    fn node_edges(&self, node: &SearchNode) -> Vec<(SearchNode, i64)> {
+    fn node_edges(
+        &self,
+        node: &SearchNode<NUM_DIRECTIONALS>,
+    ) -> Vec<(SearchNode<NUM_DIRECTIONALS>, i64)> {
         let SearchNode {
             code_so_far,
             numeric,
-            first_directional,
-            second_directional,
+            directionals,
         } = node;
         if code_so_far.len() == self.target_code.len() {
             panic!("shouldn't be in this method if we're done: {node:?}")
         }
         let next_digit = self.target_code[code_so_far.len()];
-        let potential_inputs_for_first_directional = if *numeric == next_digit {
+        let mut potential_inputs = if *numeric == next_digit {
             // We just want to push 'A'.
             vec![b'A']
         } else {
@@ -273,25 +244,17 @@ impl SearchState {
                 .edges_on_path_to(*numeric, next_digit)
                 .collect_vec()
         };
-        let potential_inputs_for_second_directional = potential_inputs_for_first_directional
+        for &directional in directionals {
+            potential_inputs = potential_inputs
+                .into_iter()
+                .flat_map(|input| self.directional_keypad.edges_on_path_to(directional, input))
+                .collect_vec();
+        }
+        potential_inputs
             .into_iter()
-            .flat_map(|input| {
-                self.directional_keypad
-                    .edges_on_path_to(*first_directional, input)
-                    .collect_vec()
-            });
-        let potential_inputs_for_me = potential_inputs_for_second_directional
-            .into_iter()
-            .flat_map(|input| {
-                self.directional_keypad
-                    .edges_on_path_to(*second_directional, input)
-                    .collect_vec()
-            });
-
-        potential_inputs_for_me
             .map(move |input| {
                 let mut node = node.clone();
-                self.apply_me_input(&mut node, input);
+                self.apply_input(Level::Directional(NUM_DIRECTIONALS - 1), &mut node, input);
                 (node, 1)
             })
             .collect_vec()
@@ -316,8 +279,7 @@ impl SearchState {
             == (SearchNode {
                 code_so_far: self.target_code.to_vec(),
                 numeric: b'A',
-                first_directional: b'A',
-                second_directional: b'A',
+                directionals: [b'A'; NUM_DIRECTIONALS],
             })
         {
             return Some(Done::ReachedEnd(cost));
@@ -387,7 +349,7 @@ fn part1(input: &[[u8; 4]]) -> usize {
         .unwrap();
         println!("numeric_part: {numeric_part}");
 
-        let mut search_state = SearchState::new(*code);
+        let mut search_state = SearchState::<2>::new(*code);
         let done = search_state.run_to_completion();
         let cost = match done {
             Done::QueueEmpty => unreachable!(),
