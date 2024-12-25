@@ -1,7 +1,10 @@
 use derivative::Derivative;
 use itertools::Itertools;
 use priority_queue::PriorityQueue;
-use std::{collections::HashMap, fmt::Write};
+use std::{
+    collections::{HashMap, HashSet},
+    fmt::Write,
+};
 
 use aoc_runner_derive::{aoc, aoc_generator};
 
@@ -190,7 +193,7 @@ impl<const NUM_DIRECTIONALS: usize> SearchState<NUM_DIRECTIONALS> {
     }
 
     fn apply_input(&self, level: Level, node: &mut SearchNode<NUM_DIRECTIONALS>, input: u8) {
-        eprintln!("apply_input {level:?} {node:?} {}", input as char);
+        // eprintln!("apply_input {level:?} {node:?} {}", input as char);
         let offset = match input {
             b'A' => None,
             b'<' => Some((0, -1)),
@@ -224,7 +227,7 @@ impl<const NUM_DIRECTIONALS: usize> SearchState<NUM_DIRECTIONALS> {
     fn node_edges(
         &self,
         node: &SearchNode<NUM_DIRECTIONALS>,
-    ) -> Vec<(SearchNode<NUM_DIRECTIONALS>, i64)> {
+    ) -> HashSet<(SearchNode<NUM_DIRECTIONALS>, i64)> {
         let SearchNode {
             code_so_far,
             numeric,
@@ -236,35 +239,34 @@ impl<const NUM_DIRECTIONALS: usize> SearchState<NUM_DIRECTIONALS> {
         let next_digit = self.target_code[code_so_far.len()];
         let mut potential_inputs = if *numeric == next_digit {
             // We just want to push 'A'.
-            vec![b'A']
+            Box::new(std::iter::once(b'A')) as Box<dyn Iterator<Item = u8>>
         } else {
             // We know we want to navigate `numeric` to the correct next digit,
             // but we don't know exactly what direction to go in.
-            self.numeric_keypad
-                .edges_on_path_to(*numeric, next_digit)
-                .collect_vec()
+            Box::new(self.numeric_keypad.edges_on_path_to(*numeric, next_digit))
         };
         for &directional in directionals {
-            potential_inputs = potential_inputs
-                .into_iter()
-                .flat_map(|input| self.directional_keypad.edges_on_path_to(directional, input))
-                .collect_vec();
+            potential_inputs = Box::new(potential_inputs.into_iter().flat_map(move |input| {
+                self.directional_keypad.edges_on_path_to(directional, input)
+            }));
         }
         potential_inputs
+            .into_iter()
+            .collect::<HashSet<_>>()
             .into_iter()
             .map(move |input| {
                 let mut node = node.clone();
                 self.apply_input(Level::Directional(NUM_DIRECTIONALS - 1), &mut node, input);
                 (node, 1)
             })
-            .collect_vec()
+            .collect::<HashSet<_>>()
     }
 
     fn step(&mut self) -> Option<Done> {
         let Some((current, _)) = self.open_set.pop() else {
             return Some(Done::QueueEmpty);
         };
-        eprintln!("processing {current:?}");
+        // eprintln!("processing {current:?}");
 
         if self
             .target_code
@@ -337,6 +339,35 @@ fn parse_input(input: &str) -> Vec<[u8; 4]> {
 fn part1(input: &[[u8; 4]]) -> usize {
     let mut total_complexity = 0usize;
     for code in input {
+        // println!("original code: {}", std::str::from_utf8(code).unwrap());
+        let numeric_part = std::str::from_utf8(
+            code.strip_prefix(&[b'0'])
+                .unwrap_or(code)
+                .strip_suffix(&[b'A'])
+                .unwrap(),
+        )
+        .unwrap()
+        .parse::<usize>()
+        .unwrap();
+        // println!("numeric_part: {numeric_part}");
+
+        let mut search_state = SearchState::<2>::new(*code);
+        let done = search_state.run_to_completion();
+        let cost = match done {
+            Done::QueueEmpty => unreachable!(),
+            Done::ReachedEnd(cost) => cost,
+        };
+
+        // println!("cost: {cost}");
+        total_complexity += cost as usize * numeric_part;
+    }
+    total_complexity
+}
+
+#[aoc(day21, part2)]
+fn part2(input: &[[u8; 4]]) -> usize {
+    let mut total_complexity = 0usize;
+    for code in input {
         println!("original code: {}", std::str::from_utf8(code).unwrap());
         let numeric_part = std::str::from_utf8(
             code.strip_prefix(&[b'0'])
@@ -349,7 +380,7 @@ fn part1(input: &[[u8; 4]]) -> usize {
         .unwrap();
         println!("numeric_part: {numeric_part}");
 
-        let mut search_state = SearchState::<2>::new(*code);
+        let mut search_state = SearchState::<25>::new(*code);
         let done = search_state.run_to_completion();
         let cost = match done {
             Done::QueueEmpty => unreachable!(),
